@@ -1,3 +1,7 @@
+/
+    Program to print numbers from 0 to 1000.
+/
+
 (+10) >(+48) >(+10)
 [
     >(+48) >(+10)

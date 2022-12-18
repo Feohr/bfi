@@ -1,3 +1,8 @@
+/
+    Hello world program written in brainf**k.
+    Prints "Hello World to the output"
+/
+
 (+10)
 [
     >(+7)>(+10)>(+3)>+<<<<-

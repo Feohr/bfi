@@ -13,24 +13,26 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("Please provide an input.")]
+    #[error("Please provide an input")]
     NoInputProvided,
-    #[error("The file format provided is incorrect. Please provide a \".bf\" format.")]
+    #[error("The file format provided is incorrect. Please provide a \".bf\" format")]
     IncorrectFileFormat,
     #[error("No extension for the given file")]
     NoFileExtenstion,
-    #[error("Too many arguments were provided to the interpreter.")]
+    #[error("Too many arguments were provided to the interpreter")]
     TooManyArguments,
-    #[error("Error parsing the file path to str.")]
+    #[error("Error parsing the file path to str")]
     ErrWhileReadingFilePath,
-    #[error("Runtime Error")]
+    #[error("Runtime Error: {0}")]
     RuntimeError(#[from] std::io::Error),
-    #[error("error while parsing int")]
+    #[error("error while parsing int: {0}")]
     ParseIntError(#[from] std::num::ParseIntError),
-    #[error("Out of the tape index: {0}")]
+    #[error("Out of the tape with index {0}")]
     OutOfTapeIndex(usize),
     #[error("Unknown token {0}")]
     UnknownToken(char),
+    #[error("Error in stack module: {0}")]
+    StackModuleError(#[from] crate::parser::stack::Error),
 }
 
 fn run() -> Result<(), Error> {
@@ -43,7 +45,7 @@ fn run() -> Result<(), Error> {
 fn main() {
     match run() {
         Err(err) => {
-            print!("Error: {error:?}:[{error}]", error = err)
+            print!("Error: {error:?}\nInfo: {error}", error = err)
         },
         _ => {},
     }

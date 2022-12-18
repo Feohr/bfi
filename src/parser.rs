@@ -1,4 +1,4 @@
-mod stack;
+pub mod stack;
 mod tape;
 
 use stack::toks::BfTokens;
@@ -26,7 +26,7 @@ impl<'a> BfParser {
     #[inline]
     fn parse(source: &'a str) -> Result<BfStack, Error> {
         let mut stack = BfStack::init_stack();
-        stack.stackify(source);
+        stack.stackify(source)?;
         return Ok(stack);
     }
 

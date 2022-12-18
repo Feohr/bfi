@@ -1,7 +1,32 @@
-#[macro_use]
 pub mod toks;
 use toks::BfTokens;
-// use std::collections::HashMap;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("The brackets are mismatched")]
+    MismatchedBrackets,
+    #[error("MismatchedLoop with no opening Loop token")]
+    MismatchedLoop,
+    #[error("The comment tag was not closed")]
+    CommentTagNotClosed,
+    #[error("Syntax error: {0}")]
+    SyntaxError(#[from] SyntaxError),
+}
+
+#[derive(Error, Debug)]
+pub enum SyntaxError {
+    #[error("Only digits allowed but found {0:?}")]
+    OnlyDigitsAllowedHere(char),
+    #[error("Write the comment outside the bracket")]
+    CommentInsideBracket,
+    #[error("Cannot parse the numerical string")]
+    ParseNumError,
+    #[error("The paranthesis for repetative numbers are unclosed")]
+    UnclosedParanthesis,
+    #[error("Expected a symbol instead found {0}")]
+    ExpectedSymbol(char),
+}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum BfWhile {
@@ -33,16 +58,14 @@ impl<'a> BfStack {
     }
 
     // Building a stack from string input.
-    pub fn stackify(&mut self, source: &'a str) {
+    pub fn stackify(&mut self, source: &'a str) -> Result<(), Error> {
 
         let mut src: Vec<char> = source.chars().filter(|&x| is_useless(x)).collect();
         let mut pos: usize = 1_usize;
         std::mem::drop(source);
 
         loop {
-
             if src.is_empty() { break }
-
             match src[0] {
                 BfTokens::FSL => {
                     // eating opening '/'
@@ -51,36 +74,28 @@ impl<'a> BfStack {
                     while src[0] != BfTokens::FSL {
                         src.remove(0);
                         pos += 1;
-                        if src.is_empty() {
-                            bfpanic!("Error", "Comment tag not closed", BfTokens::FSL, true);
-                        }
+                        if src.is_empty() { return Err(Error::CommentTagNotClosed) }
                     }
                 },
                 BfTokens::LLP => {
-                    let loop_vec = read_loop(&mut src, &mut pos);
+                    let loop_vec = read_loop(&mut src, &mut pos)?;
                     self.push_stack(BfStackElem::While(loop_vec));
                 },
-                BfTokens::RLP => {
-                    bfpanic!( "MismatchedLoop", "No opening Loop token", src[0], true);
-                },
+                BfTokens::RLP => return Err(Error::MismatchedLoop),
                 BfTokens::LTB => {
-                    let (action, mut repition) = read_rep(&mut src, &mut pos);
+                    let (action, mut repition) = read_rep(&mut src, &mut pos)?;
                     while repition > 0 {
                         self.push_stack(BfStackElem::Single(action));
                         repition -= 1;
                     }
                 },
-                BfTokens::RTB => {
-                    bfpanic!( "MismatchedBrackets", "No opening paranthesis", src[0], true);
-                },
+                BfTokens::RTB => return Err(Error::MismatchedBrackets),
                 _ => self.push_stack(BfStackElem::Single(src[0])),
             }
-
             src.remove(0);
             pos += 1;
-
         }
-
+        Ok(())
     }
 
     // Adding char as stack element.
@@ -99,7 +114,7 @@ impl<'a> BfStack {
 }
 
 // To read the loop chars and creating a vector element.
-fn read_loop(source: &mut Vec<char>, pos: &mut usize) -> Vec<BfWhile> {
+fn read_loop(source: &mut Vec<char>, pos: &mut usize) -> Result<Vec<BfWhile>, Error> {
     let mut loop_vec: Vec<BfWhile> = Vec::new();
 
     // Skipping the opening bracket.
@@ -108,22 +123,19 @@ fn read_loop(source: &mut Vec<char>, pos: &mut usize) -> Vec<BfWhile> {
 
     // Loop till we reach the closing bracket.
     loop {
-        if source.is_empty() {
-            bfpanic!("Unclosed Loop", true);
-        }
-
+        if source.is_empty() { return Err(Error::MismatchedLoop) }
         match source[0] {
             BfTokens::LLP => {
                 // This is the internal loop.
-                let nest_loop_vec = read_loop(source, pos);
+                let nest_loop_vec = read_loop(source, pos)?;
                 loop_vec.push(BfWhile::Nested(Box::new(BfStackElem::While(nest_loop_vec))));
             }
             BfTokens::RLP => {
                 loop_vec.push(BfWhile::End);
-                return loop_vec;
+                return Ok(loop_vec);
             }
             BfTokens::LTB => {
-                let (action, mut repition) = read_rep(source, pos);
+                let (action, mut repition) = read_rep(source, pos)?;
                 while repition > 0 {
                     loop_vec.push(BfWhile::Linear(action));
                     repition -= 1;
@@ -136,23 +148,21 @@ fn read_loop(source: &mut Vec<char>, pos: &mut usize) -> Vec<BfWhile> {
                 while source[0] != BfTokens::FSL {
                     source.remove(0);
                     *pos += 1;
-                    if source.is_empty() {
-                        bfpanic!("Error", "Comment tag not closed", BfTokens::FSL, true);
-                    }
+                    if source.is_empty() { return Err(Error::CommentTagNotClosed) }
                 }
             }
             _ => {
                 loop_vec.push(BfWhile::Linear(source[0]));
             }
         }
-
         source.remove(0);
         *pos += 1;
     }
+
 }
 
 // To read numbers
-fn read_rep(source: &mut Vec<char>, pos: &mut usize) -> (char, usize) {
+fn read_rep(source: &mut Vec<char>, pos: &mut usize) -> Result<(char, usize), SyntaxError> {
     // Skipping the opening loop.
     source.remove(0);
     *pos += 1;
@@ -167,50 +177,31 @@ fn read_rep(source: &mut Vec<char>, pos: &mut usize) -> (char, usize) {
             source.remove(0);
             *pos += 1;
         },
-        _ => {
-            sign = '\0';
-            bfpanic!("Syntax Error", "Expected a symbol", source[0], true);
-        },
+        _ => return Err(SyntaxError::ExpectedSymbol(source[0])),
     }
 
     loop {
-
         if source.is_empty() {
-            bfpanic!("Expected to have a closing paranthesis", true);
+            return Err(SyntaxError::UnclosedParanthesis);
         }
-
         if !source[0].is_digit(10) {
-
             if source[0].eq(&BfTokens::RTB) {
-
-                if number.is_empty() { return (sign, 1) }
-
+                if number.is_empty() { return Ok((sign, 1)) }
                 let Ok(num) = number
                     .trim()
                     .parse::<usize>() else {
-                    bfpanic!("SyntaxError", "Cannot parse an empty string", source[0], true);
-                    // The return needs to be a return type statement but, since 'bfpanic' doesn't
-                    // necessarily mean 'panic' of the program, we need to add an extra dummy panic
-                    // to make the program compile.
-                    panic!()
+                        return Err(SyntaxError::ParseNumError);
                 };
-
-                return (sign, num);
-
+                return Ok((sign, num));
             }
-
             if source[0].ne(&BfTokens::FSL) {
-                bfpanic!( "SyntaxError", "Only digits allowed here", source[0], true);
+                return Err(SyntaxError::OnlyDigitsAllowedHere(source[0]));
             }
-
-            bfpanic!( "SyntaxError", "Write the comment outside of brackets", source[0], true);
-
+            return Err(SyntaxError::CommentInsideBracket);
         }
-
         number.push(source[0]);
         source.remove(0);
         *pos += 1;
-
     }
 
 }
